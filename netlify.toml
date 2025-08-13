@@ -1,0 +1,23 @@
+[build]
+  command = "npm run build"
+  publish = "build"
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "18"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Function-specific configuration
+[functions]
+  node_bundler = "esbuild"
+
+# Development configuration
+[dev]
+  command = "npm start"
+  port = 3000
+  functions = "netlify/functions"
+  envFile = ".env.local"
