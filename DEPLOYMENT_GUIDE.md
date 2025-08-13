@@ -42,10 +42,10 @@ GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_ID=your-actual-private-key-id
 GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYour actual private key here\n-----END PRIVATE KEY-----\n"
 GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL=your-actual-service-account@your-project.iam.gserviceaccount.com
 GOOGLE_SERVICE_ACCOUNT_CLIENT_ID=your-actual-client-id
-GOOGLE_SERVICE_ACCOUNT_AUTH_URI=https://accounts.google.com/o/oauth2/auth
-GOOGLE_SERVICE_ACCOUNT_TOKEN_URI=https://oauth2.googleapis.com/token
-GOOGLE_SERVICE_ACCOUNT_AUTH_PROVIDER_X509_CERT_URL=https://www.googleapis.com/oauth2/v1/certs
-GOOGLE_SERVICE_ACCOUNT_CLIENT_X509_CERT_URL=https://www.googleapis.com/robot/v1/metadata/x509/your-actual-service-account%40your-project.iam.gserviceaccount.com
+GOOGLE_SERVICE_ACCOUNT_AUTH_URI=your-auth-uri-here
+GOOGLE_SERVICE_ACCOUNT_TOKEN_URI=your-token-uri-here
+GOOGLE_SERVICE_ACCOUNT_AUTH_PROVIDER_X509_CERT_URL=your-cert-url-here
+GOOGLE_SERVICE_ACCOUNT_CLIENT_X509_CERT_URL=your-client-cert-url-here
 
 # Google Spreadsheet ID
 GOOGLE_SPREADSHEET_ID=your-actual-spreadsheet-id
