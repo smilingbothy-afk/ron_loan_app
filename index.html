@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Email URL Test</title>
+</head>
+<body>
+  <h1>Email URL Test</h1>
+  <p id="output">No email found.</p>
+
+  <script>
+    // Read the "email" query parameter
+    const params = new URLSearchParams(window.location.search);
+    const email = params.get('email');
+
+    // Display it on the page
+    if (email) {
+      document.getElementById('output').textContent = "Email from URL: " + email;
+    }
+  </script>
+</body>
+</html>
