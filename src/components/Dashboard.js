@@ -12,7 +12,7 @@ const Dashboard = ({ email }) => {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   const loadData = async () => {
     try {

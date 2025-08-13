@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
 const AddBorrowerForm = ({ onSubmit, isLoading, userEmail, freddieMacRates }) => {
   const [formData, setFormData] = useState({
@@ -72,7 +72,6 @@ const AddBorrowerForm = ({ onSubmit, isLoading, userEmail, freddieMacRates }) =>
     const freddieMacMonthlyRate = freddieMacRateDecimal / 12;
     
     // Calculate estimated new payment (simplified calculation)
-    const loanAmount = parseFloat(formData.currentLoanAmount);
     const currentPayment = parseFloat(formData.currentPayment);
     
     // Simple estimation - in real app, you'd use proper mortgage calculation

@@ -8,7 +8,7 @@ const EmailVerification = ({ email, onEmailVerified }) => {
 
   useEffect(() => {
     verifyUserEmail();
-  }, []);
+  }, [verifyUserEmail]);
 
   const verifyUserEmail = async () => {
     try {

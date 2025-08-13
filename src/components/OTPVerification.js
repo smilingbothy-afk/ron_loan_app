@@ -14,7 +14,7 @@ const OTPVerification = ({ email, onOTPVerified }) => {
   useEffect(() => {
     // Send OTP automatically when component mounts
     sendOTPToUser();
-  }, []);
+  }, [sendOTPToUser]);
 
   useEffect(() => {
     let timer;
