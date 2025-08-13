@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { checkUserEmail } from '../services/googleSheetsService';
 
 const EmailVerification = ({ email, onEmailVerified }) => {
@@ -6,11 +6,7 @@ const EmailVerification = ({ email, onEmailVerified }) => {
   const [isValidUser, setIsValidUser] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    verifyUserEmail();
-  }, [verifyUserEmail]);
-
-  const verifyUserEmail = async () => {
+  const verifyUserEmail = useCallback(async () => {
     try {
       setIsLoading(true);
       setError('');
@@ -32,7 +28,11 @@ const EmailVerification = ({ email, onEmailVerified }) => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [email, onEmailVerified]);
+
+  useEffect(() => {
+    verifyUserEmail();
+  }, [verifyUserEmail]);
 
   if (isLoading) {
     return (

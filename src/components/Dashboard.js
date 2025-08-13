@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { fetchBorrowerData, addBorrowerData, fetchFreddieMacRates } from '../services/googleSheetsService';
 import AddBorrowerForm from './AddBorrowerForm';
 
@@ -10,11 +10,7 @@ const Dashboard = ({ email }) => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [isAddingData, setIsAddingData] = useState(false);
 
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setIsLoading(true);
       setError('');
@@ -32,7 +28,11 @@ const Dashboard = ({ email }) => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [email]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const handleAddBorrower = async (newBorrower) => {
     try {

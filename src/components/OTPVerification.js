@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { sendOTP, verifyOTP } from '../services/googleSheetsService';
 
 const OTPVerification = ({ email, onOTPVerified }) => {
@@ -11,22 +11,7 @@ const OTPVerification = ({ email, onOTPVerified }) => {
   const [countdown, setCountdown] = useState(0);
   const inputRefs = useRef([]);
 
-  useEffect(() => {
-    // Send OTP automatically when component mounts
-    sendOTPToUser();
-  }, [sendOTPToUser]);
-
-  useEffect(() => {
-    let timer;
-    if (countdown > 0) {
-      timer = setTimeout(() => setCountdown(countdown - 1), 1000);
-    } else {
-      setCanResend(true);
-    }
-    return () => clearTimeout(timer);
-  }, [countdown]);
-
-  const sendOTPToUser = async () => {
+  const sendOTPToUser = useCallback(async () => {
     try {
       setIsSendingOTP(true);
       setError('');
@@ -44,7 +29,22 @@ const OTPVerification = ({ email, onOTPVerified }) => {
     } finally {
       setIsSendingOTP(false);
     }
-  };
+  }, [email]);
+
+  useEffect(() => {
+    // Send OTP automatically when component mounts
+    sendOTPToUser();
+  }, [sendOTPToUser]);
+
+  useEffect(() => {
+    let timer;
+    if (countdown > 0) {
+      timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+    } else {
+      setCanResend(true);
+    }
+    return () => clearTimeout(timer);
+  }, [countdown]);
 
   const handleOTPChange = (index, value) => {
     if (value.length <= 1) {
