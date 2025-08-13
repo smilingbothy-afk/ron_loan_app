@@ -140,18 +140,27 @@ exports.handler = async (event, context) => {
   }
 };
 
-// Check if user email exists in users sheet
+// Check if user email exists in Users sheet
 async function checkUserEmail(sheets, spreadsheetId, email) {
   console.log('🔍 Checking user email:', email);
   
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: 'users!A:A'
+    range: 'Users!A:B'
   });
 
   const values = response.data.values || [];
-  const userExists = values.some(row => row[0] === email);
   
+  if (values.length === 0) {
+    console.log('📋 No users found');
+    return { exists: false };
+  }
+
+  // Skip header row and check if email exists in column B
+  const dataRows = values.slice(1);
+  const userExists = dataRows.some(row => row[1] === email); // Email is in column B (index 1)
+  
+  console.log('📋 Total users found:', dataRows.length);
   console.log('👤 User exists:', userExists);
   return { exists: userExists };
 }
