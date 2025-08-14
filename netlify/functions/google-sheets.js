@@ -24,6 +24,27 @@ const gmailTransporter = nodemailer.createTransport({
   }
 });
 
+// Secure in-memory OTP storage with automatic cleanup
+const otpStore = new Map();
+const rateLimitStore = new Map();
+
+// Cleanup expired OTPs every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [email, data] of otpStore.entries()) {
+    if (now - data.timestamp > 10 * 60 * 1000) { // 10 minutes
+      otpStore.delete(email);
+    }
+  }
+  
+  // Cleanup rate limit data older than 1 hour
+  for (const [email, data] of rateLimitStore.entries()) {
+    if (now - data.timestamp > 60 * 60 * 1000) { // 1 hour
+      rateLimitStore.delete(email);
+    }
+  }
+}, 5 * 60 * 1000); // Run every 5 minutes
+
 // Initialize Google Sheets API
 const getGoogleSheets = () => {
   const auth = new google.auth.GoogleAuth({
@@ -53,75 +74,100 @@ const handleCORS = (event) => {
   return headers;
 };
 
-// Generate a random 4-digit OTP
+// Generate a cryptographically secure 4-digit OTP
 const generateOTP = () => {
-  return Math.floor(1000 + Math.random() * 9000).toString();
+  // Use crypto.randomInt for better security than Math.random
+  const crypto = require('crypto');
+  return crypto.randomInt(1000, 10000).toString();
 };
 
-// Store OTP in Google Sheets with timestamp
-const storeOTP = async (sheets, spreadsheetId, email, otp) => {
-  const timestamp = new Date().toISOString();
-  const otpData = [timestamp, email, otp, 'PENDING']; // timestamp, email, otp, status
+// Rate limiting: max 3 OTP requests per email per hour
+const checkRateLimit = (email) => {
+  const now = Date.now();
+  const hourAgo = now - (60 * 60 * 1000);
   
-  await sheets.spreadsheets.values.append({
-    spreadsheetId,
-    range: 'OTP_Log!A:D',
-    valueInputOption: 'RAW',
-    insertDataOption: 'INSERT_ROWS',
-    resource: {
-      values: [otpData]
-    }
-  });
-};
-
-// Verify OTP from Google Sheets
-const verifyOTPFromSheet = async (sheets, spreadsheetId, email, otp) => {
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: 'OTP_Log!A:D'
-  });
-
-  const values = response.data.values || [];
-  if (values.length === 0) return false;
-
-  const headers = values[0];
-  const dataRows = values.slice(1);
-
-  // Find the most recent OTP for this email
-  const userOTPs = dataRows
-    .filter(row => row[1] === email && row[3] === 'PENDING')
-    .sort((a, b) => new Date(b[0]) - new Date(a[0])); // Sort by timestamp, newest first
-
-  if (userOTPs.length === 0) return false;
-
-  const latestOTP = userOTPs[0];
-  const otpTimestamp = new Date(latestOTP[0]);
-  const currentTime = new Date();
-  const timeDifference = (currentTime - otpTimestamp) / 1000 / 60; // Difference in minutes
-
-  // OTP expires after 10 minutes
-  if (timeDifference > 10) {
-    console.log('⏰ OTP expired for:', email);
-    return false;
-  }
-
-  // Check if OTP matches
-  if (latestOTP[2] === otp) {
-    // Mark OTP as used
-    const rowIndex = values.findIndex(row => row[0] === latestOTP[0] && row[1] === email && row[2] === otp);
-    if (rowIndex > 0) {
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: `OTP_Log!D${rowIndex + 1}`,
-        valueInputOption: 'RAW',
-        resource: {
-          values: [['USED']]
-        }
-      });
-    }
+  if (!rateLimitStore.has(email)) {
+    rateLimitStore.set(email, { count: 1, timestamp: now });
     return true;
   }
+  
+  const data = rateLimitStore.get(email);
+  
+  // Reset counter if more than an hour has passed
+  if (now - data.timestamp > hourAgo) {
+    rateLimitStore.set(email, { count: 1, timestamp: now });
+    return true;
+  }
+  
+  // Check if limit exceeded
+  if (data.count >= 3) {
+    return false;
+  }
+  
+  // Increment counter
+  data.count++;
+  return true;
+};
 
+// Store OTP securely in memory
+const storeOTP = (email, otp) => {
+  const timestamp = Date.now();
+  const attempts = 0;
+  
+  otpStore.set(email, {
+    otp,
+    timestamp,
+    attempts,
+    verified: false
+  });
+  
+  console.log(`🔐 OTP stored for ${email}: ${otp}`);
+};
+
+// Verify OTP from memory storage
+const verifyOTPFromMemory = (email, otp) => {
+  if (!otpStore.has(email)) {
+    console.log(`❌ No OTP found for ${email}`);
+    return false;
+  }
+  
+  const data = otpStore.get(email);
+  const now = Date.now();
+  const timeDifference = (now - data.timestamp) / 1000 / 60; // minutes
+  
+  // Check if OTP expired (10 minutes)
+  if (timeDifference > 10) {
+    console.log(`⏰ OTP expired for ${email}`);
+    otpStore.delete(email);
+    return false;
+  }
+  
+  // Check if already verified
+  if (data.verified) {
+    console.log(`❌ OTP already used for ${email}`);
+    return false;
+  }
+  
+  // Check if max attempts exceeded (5 attempts)
+  if (data.attempts >= 5) {
+    console.log(`🚫 Max attempts exceeded for ${email}`);
+    otpStore.delete(email);
+    return false;
+  }
+  
+  // Increment attempt counter
+  data.attempts++;
+  
+  // Check if OTP matches
+  if (data.otp === otp) {
+    // Mark as verified and remove from store
+    data.verified = true;
+    otpStore.delete(email);
+    console.log(`✅ OTP verified for ${email}`);
+    return true;
+  }
+  
+  console.log(`❌ Invalid OTP for ${email}, attempt ${data.attempts}/5`);
   return false;
 };
 
@@ -153,42 +199,48 @@ exports.handler = async (event, context) => {
       throw new Error('Action is required');
     }
 
-    const sheets = getGoogleSheets();
-    const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
-
-    if (!spreadsheetId) {
-      throw new Error('Spreadsheet ID not configured');
-    }
-
     let result;
 
-    switch (action) {
-      case 'checkUserEmail':
-        result = await checkUserEmail(sheets, spreadsheetId, params.email);
-        break;
-      
-      case 'sendOTP':
-        result = await sendOTP(sheets, spreadsheetId, params.email);
-        break;
-      
-      case 'verifyOTP':
-        result = await verifyOTP(sheets, spreadsheetId, params.email, params.otp);
-        break;
-      
-      case 'fetchBorrowerData':
-        result = await fetchBorrowerData(sheets, spreadsheetId, params.userEmail);
-        break;
-      
-      case 'fetchFreddieMacRates':
-        result = await fetchFreddieMacRates(sheets, spreadsheetId);
-        break;
-      
-      case 'addBorrowerData':
-        result = await addBorrowerData(sheets, spreadsheetId, params.borrowerData);
-        break;
-      
-      default:
-        throw new Error(`Unknown action: ${action}`);
+    // Handle OTP actions without Google Sheets dependency
+    if (action === 'sendOTP' || action === 'verifyOTP') {
+      switch (action) {
+        case 'sendOTP':
+          result = await sendOTP(params.email);
+          break;
+        
+        case 'verifyOTP':
+          result = await verifyOTP(params.email, params.otp);
+          break;
+      }
+    } else {
+      // Handle Google Sheets actions
+      const sheets = getGoogleSheets();
+      const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
+
+      if (!spreadsheetId) {
+        throw new Error('Spreadsheet ID not configured');
+      }
+
+      switch (action) {
+        case 'checkUserEmail':
+          result = await checkUserEmail(sheets, spreadsheetId, params.email);
+          break;
+        
+        case 'fetchBorrowerData':
+          result = await fetchBorrowerData(sheets, spreadsheetId, params.userEmail);
+          break;
+        
+        case 'fetchFreddieMacRates':
+          result = await fetchFreddieMacRates(sheets, spreadsheetId);
+          break;
+        
+        case 'addBorrowerData':
+          result = await addBorrowerData(sheets, spreadsheetId, params.borrowerData);
+          break;
+        
+        default:
+          throw new Error(`Unknown action: ${action}`);
+      }
     }
 
     console.log('✅ Operation successful:', action);
@@ -247,18 +299,22 @@ async function checkUserEmail(sheets, spreadsheetId, email) {
   return { exists: userExists };
 }
 
-// Send OTP via Gmail
-async function sendOTP(sheets, spreadsheetId, email) {
+// Send OTP via Gmail with rate limiting
+async function sendOTP(email) {
   console.log('📧 Sending OTP to:', email);
   
   try {
-    // Generate 4-digit OTP
+    // Check rate limit
+    if (!checkRateLimit(email)) {
+      throw new Error('Rate limit exceeded. Maximum 3 OTP requests per hour allowed.');
+    }
+    
+    // Generate secure 4-digit OTP
     const otp = generateOTP();
     console.log('🔐 Generated OTP:', otp);
     
-    // Store OTP in Google Sheets
-    await storeOTP(sheets, spreadsheetId, email, otp);
-    console.log('💾 OTP stored in sheet');
+    // Store OTP securely in memory
+    storeOTP(email, otp);
     
     // Send email via Gmail
     const mailOptions = {
@@ -296,13 +352,13 @@ async function sendOTP(sheets, spreadsheetId, email) {
   }
 }
 
-// Verify OTP from Google Sheets
-async function verifyOTP(sheets, spreadsheetId, email, otp) {
+// Verify OTP from memory storage
+async function verifyOTP(email, otp) {
   console.log('🔍 Verifying OTP for:', email);
   console.log('🔐 OTP received:', otp);
   
   try {
-    const isValid = await verifyOTPFromSheet(sheets, spreadsheetId, email, otp);
+    const isValid = verifyOTPFromMemory(email, otp);
     console.log('✅ OTP valid:', isValid);
     
     return { 
