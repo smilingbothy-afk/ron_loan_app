@@ -16,7 +16,7 @@ const serviceAccountCredentials = {
 };
 
 // Gmail SMTP configuration
-const gmailTransporter = nodemailer.createTransporter({
+const gmailTransporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
     user: process.env.GMAIL_USER, // Your Gmail address
