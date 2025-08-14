@@ -84,7 +84,7 @@ const AddBorrowerForm = ({ onSubmit, isLoading, userEmail, freddieMacRates }) =>
     const newBorrower = {
       "Borrower Last Name": formData.borrowerLastName,
       "Current Loan Amount": parseFloat(formData.currentLoanAmount),
-      "Current Interest Rate": parseFloat(formData.currentInterestRate),
+      "Current Interest Rate": parseFloat(formData.currentInterestRate), // Store as raw percentage (e.g., 6.5)
       "Current Monthly Rate": currentMonthlyRate,
       "Desired Monthly Savings": parseFloat(formData.desiredMonthlySavings),
       "User Email": userEmail,
@@ -139,7 +139,6 @@ const AddBorrowerForm = ({ onSubmit, isLoading, userEmail, freddieMacRates }) =>
           onChange={handleInputChange}
           placeholder="Enter current loan amount"
           min="0"
-          step="1000"
         />
         {errors.currentLoanAmount && (
           <div className="error" style={{ fontSize: '14px', marginTop: '5px' }}>
@@ -158,8 +157,6 @@ const AddBorrowerForm = ({ onSubmit, isLoading, userEmail, freddieMacRates }) =>
           onChange={handleInputChange}
           placeholder="Enter current interest rate"
           min="0"
-          max="20"
-          step="0.01"
         />
         {errors.currentInterestRate && (
           <div className="error" style={{ fontSize: '14px', marginTop: '5px' }}>
@@ -178,7 +175,6 @@ const AddBorrowerForm = ({ onSubmit, isLoading, userEmail, freddieMacRates }) =>
           onChange={handleInputChange}
           placeholder="Enter desired monthly savings"
           min="0"
-          step="10"
         />
         {errors.desiredMonthlySavings && (
           <div className="error" style={{ fontSize: '14px', marginTop: '5px' }}>
@@ -197,7 +193,6 @@ const AddBorrowerForm = ({ onSubmit, isLoading, userEmail, freddieMacRates }) =>
           onChange={handleInputChange}
           placeholder="Enter current monthly payment"
           min="0"
-          step="10"
         />
         {errors.currentPayment && (
           <div className="error" style={{ fontSize: '14px', marginTop: '5px' }}>

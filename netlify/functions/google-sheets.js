@@ -1,4 +1,5 @@
 const { google } = require('googleapis');
+const nodemailer = require('nodemailer');
 
 // Service account credentials - these will be environment variables
 const serviceAccountCredentials = {
@@ -13,6 +14,15 @@ const serviceAccountCredentials = {
   auth_provider_x509_cert_url: process.env.GOOGLE_SERVICE_ACCOUNT_AUTH_PROVIDER_X509_CERT_URL,
   client_x509_cert_url: process.env.GOOGLE_SERVICE_ACCOUNT_CLIENT_X509_CERT_URL
 };
+
+// Gmail SMTP configuration
+const gmailTransporter = nodemailer.createTransporter({
+  service: 'gmail',
+  auth: {
+    user: process.env.GMAIL_USER, // Your Gmail address
+    pass: process.env.GMAIL_APP_PASSWORD // Gmail App Password (not your regular password)
+  }
+});
 
 // Initialize Google Sheets API
 const getGoogleSheets = () => {
@@ -41,6 +51,78 @@ const handleCORS = (event) => {
   }
 
   return headers;
+};
+
+// Generate a random 4-digit OTP
+const generateOTP = () => {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+};
+
+// Store OTP in Google Sheets with timestamp
+const storeOTP = async (sheets, spreadsheetId, email, otp) => {
+  const timestamp = new Date().toISOString();
+  const otpData = [timestamp, email, otp, 'PENDING']; // timestamp, email, otp, status
+  
+  await sheets.spreadsheets.values.append({
+    spreadsheetId,
+    range: 'OTP_Log!A:D',
+    valueInputOption: 'RAW',
+    insertDataOption: 'INSERT_ROWS',
+    resource: {
+      values: [otpData]
+    }
+  });
+};
+
+// Verify OTP from Google Sheets
+const verifyOTPFromSheet = async (sheets, spreadsheetId, email, otp) => {
+  const response = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: 'OTP_Log!A:D'
+  });
+
+  const values = response.data.values || [];
+  if (values.length === 0) return false;
+
+  const headers = values[0];
+  const dataRows = values.slice(1);
+
+  // Find the most recent OTP for this email
+  const userOTPs = dataRows
+    .filter(row => row[1] === email && row[3] === 'PENDING')
+    .sort((a, b) => new Date(b[0]) - new Date(a[0])); // Sort by timestamp, newest first
+
+  if (userOTPs.length === 0) return false;
+
+  const latestOTP = userOTPs[0];
+  const otpTimestamp = new Date(latestOTP[0]);
+  const currentTime = new Date();
+  const timeDifference = (currentTime - otpTimestamp) / 1000 / 60; // Difference in minutes
+
+  // OTP expires after 10 minutes
+  if (timeDifference > 10) {
+    console.log('⏰ OTP expired for:', email);
+    return false;
+  }
+
+  // Check if OTP matches
+  if (latestOTP[2] === otp) {
+    // Mark OTP as used
+    const rowIndex = values.findIndex(row => row[0] === latestOTP[0] && row[1] === email && row[2] === otp);
+    if (rowIndex > 0) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId,
+        range: `OTP_Log!D${rowIndex + 1}`,
+        valueInputOption: 'RAW',
+        resource: {
+          values: [['USED']]
+        }
+      });
+    }
+    return true;
+  }
+
+  return false;
 };
 
 exports.handler = async (event, context) => {
@@ -86,11 +168,11 @@ exports.handler = async (event, context) => {
         break;
       
       case 'sendOTP':
-        result = await sendOTP(params.email);
+        result = await sendOTP(sheets, spreadsheetId, params.email);
         break;
       
       case 'verifyOTP':
-        result = await verifyOTP(params.email, params.otp);
+        result = await verifyOTP(sheets, spreadsheetId, params.email, params.otp);
         break;
       
       case 'fetchBorrowerData':
@@ -165,29 +247,72 @@ async function checkUserEmail(sheets, spreadsheetId, email) {
   return { exists: userExists };
 }
 
-// Send OTP (simulated for now)
-async function sendOTP(email) {
+// Send OTP via Gmail
+async function sendOTP(sheets, spreadsheetId, email) {
   console.log('📧 Sending OTP to:', email);
   
-  // In a real app, you'd integrate with an email service
-  // For now, we'll simulate OTP generation
-  const otp = Math.floor(1000 + Math.random() * 9000).toString();
-  
-  console.log('🔐 Generated OTP:', otp);
-  return { otp, message: 'OTP sent successfully' };
+  try {
+    // Generate 4-digit OTP
+    const otp = generateOTP();
+    console.log('🔐 Generated OTP:', otp);
+    
+    // Store OTP in Google Sheets
+    await storeOTP(sheets, spreadsheetId, email, otp);
+    console.log('💾 OTP stored in sheet');
+    
+    // Send email via Gmail
+    const mailOptions = {
+      from: process.env.GMAIL_USER,
+      to: email,
+      subject: 'Your OTP for Thinkific Alert App',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #333;">🔐 Your OTP Code</h2>
+          <p>Hello!</p>
+          <p>You requested an OTP to access the Thinkific Alert App.</p>
+          <div style="background: #f4f4f4; padding: 20px; text-align: center; margin: 20px 0;">
+            <h1 style="color: #007bff; font-size: 48px; margin: 0; letter-spacing: 10px;">${otp}</h1>
+          </div>
+          <p><strong>This OTP will expire in 10 minutes.</strong></p>
+          <p>If you didn't request this code, please ignore this email.</p>
+          <hr style="margin: 20px 0;">
+          <p style="color: #666; font-size: 12px;">This is an automated message from Thinkific Alert App.</p>
+        </div>
+      `
+    };
+    
+    await gmailTransporter.sendMail(mailOptions);
+    console.log('📧 OTP email sent successfully');
+    
+    return { 
+      success: true, 
+      message: 'OTP sent successfully',
+      otp: otp // For development/testing - remove in production
+    };
+    
+  } catch (error) {
+    console.error('💥 Error sending OTP:', error);
+    throw new Error(`Failed to send OTP: ${error.message}`);
+  }
 }
 
-// Verify OTP (simulated for now)
-async function verifyOTP(email, otp) {
+// Verify OTP from Google Sheets
+async function verifyOTP(sheets, spreadsheetId, email, otp) {
   console.log('🔍 Verifying OTP for:', email);
   console.log('🔐 OTP received:', otp);
   
-  // In a real app, you'd verify against stored OTP
-  // For now, we'll accept any 4-digit OTP
-  const isValid = /^\d{4}$/.test(otp);
-  
-  console.log('✅ OTP valid:', isValid);
-  return { valid: isValid };
+  try {
+    const isValid = await verifyOTPFromSheet(sheets, spreadsheetId, email, otp);
+    console.log('✅ OTP valid:', isValid);
+    
+    return { 
+      valid: isValid,
+      message: isValid ? 'OTP verified successfully' : 'Invalid or expired OTP'
+    };
+  } catch (error) {
+    console.error('💥 Error verifying OTP:', error);
+    throw new Error(`Failed to verify OTP: ${error.message}`);
+  }
 }
 
 // Fetch borrower data for a specific user
