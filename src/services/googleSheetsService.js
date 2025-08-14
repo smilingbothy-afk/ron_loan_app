@@ -86,7 +86,7 @@ export const verifyOTP = async (email, otp) => {
   try {
     const result = await callNetlifyFunction('verifyOTP', { email, otp });
     console.log('✅ OTP verification result:', result);
-    return result.valid;
+    return result; // Return the full result object, not just result.valid
   } catch (error) {
     console.error('❌ Error verifying OTP:', error);
     throw error;

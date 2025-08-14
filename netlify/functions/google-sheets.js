@@ -1,5 +1,7 @@
 const { google } = require('googleapis');
 const nodemailer = require('nodemailer');
+const fs = require('fs');
+const path = require('path');
 
 // Service account credentials - these will be environment variables
 const serviceAccountCredentials = {
@@ -24,26 +26,85 @@ const gmailTransporter = nodemailer.createTransport({
   }
 });
 
-// Secure in-memory OTP storage with automatic cleanup
-const otpStore = new Map();
-const rateLimitStore = new Map();
+// File-based OTP storage that persists between function calls
+const OTP_FILE_PATH = '/tmp/otps.json';
+const RATE_LIMIT_FILE_PATH = '/tmp/rate_limits.json';
 
-// Cleanup expired OTPs every 5 minutes
-setInterval(() => {
+// Helper functions for file-based storage
+const readOTPStore = () => {
+  try {
+    if (fs.existsSync(OTP_FILE_PATH)) {
+      const data = fs.readFileSync(OTP_FILE_PATH, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.log('📁 Creating new OTP store');
+  }
+  return {};
+};
+
+const writeOTPStore = (data) => {
+  try {
+    fs.writeFileSync(OTP_FILE_PATH, JSON.stringify(data, null, 2));
+  } catch (error) {
+    console.error('💥 Error writing OTP store:', error);
+  }
+};
+
+const readRateLimitStore = () => {
+  try {
+    if (fs.existsSync(RATE_LIMIT_FILE_PATH)) {
+      const data = fs.readFileSync(RATE_LIMIT_FILE_PATH, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    console.log('📁 Creating new rate limit store');
+  }
+  return {};
+};
+
+const writeRateLimitStore = (data) => {
+  try {
+    fs.writeFileSync(RATE_LIMIT_FILE_PATH, JSON.stringify(data, null, 2));
+  } catch (error) {
+    console.error('💥 Error writing rate limit store:', error);
+  }
+};
+
+// Cleanup expired data
+const cleanupExpiredData = () => {
   const now = Date.now();
-  for (const [email, data] of otpStore.entries()) {
+  
+  // Cleanup OTPs
+  const otpStore = readOTPStore();
+  let otpStoreChanged = false;
+  
+  for (const [email, data] of Object.entries(otpStore)) {
     if (now - data.timestamp > 10 * 60 * 1000) { // 10 minutes
-      otpStore.delete(email);
+      delete otpStore[email];
+      otpStoreChanged = true;
     }
   }
   
-  // Cleanup rate limit data older than 1 hour
-  for (const [email, data] of rateLimitStore.entries()) {
+  if (otpStoreChanged) {
+    writeOTPStore(otpStore);
+  }
+  
+  // Cleanup rate limits
+  const rateLimitStore = readRateLimitStore();
+  let rateLimitStoreChanged = false;
+  
+  for (const [email, data] of Object.entries(rateLimitStore)) {
     if (now - data.timestamp > 60 * 60 * 1000) { // 1 hour
-      rateLimitStore.delete(email);
+      delete rateLimitStore[email];
+      rateLimitStoreChanged = true;
     }
   }
-}, 5 * 60 * 1000); // Run every 5 minutes
+  
+  if (rateLimitStoreChanged) {
+    writeRateLimitStore(rateLimitStore);
+  }
+};
 
 // Initialize Google Sheets API
 const getGoogleSheets = () => {
@@ -86,16 +147,20 @@ const checkRateLimit = (email) => {
   const now = Date.now();
   const hourAgo = now - (60 * 60 * 1000);
   
-  if (!rateLimitStore.has(email)) {
-    rateLimitStore.set(email, { count: 1, timestamp: now });
+  const rateLimitStore = readRateLimitStore();
+  
+  if (!rateLimitStore[email]) {
+    rateLimitStore[email] = { count: 1, timestamp: now };
+    writeRateLimitStore(rateLimitStore);
     return true;
   }
   
-  const data = rateLimitStore.get(email);
+  const data = rateLimitStore[email];
   
   // Reset counter if more than an hour has passed
   if (now - data.timestamp > hourAgo) {
-    rateLimitStore.set(email, { count: 1, timestamp: now });
+    rateLimitStore[email] = { count: 1, timestamp: now };
+    writeRateLimitStore(rateLimitStore);
     return true;
   }
   
@@ -106,39 +171,53 @@ const checkRateLimit = (email) => {
   
   // Increment counter
   data.count++;
+  writeRateLimitStore(rateLimitStore);
   return true;
 };
 
-// Store OTP securely in memory
+// Store OTP securely in file storage
 const storeOTP = (email, otp) => {
   const timestamp = Date.now();
   const attempts = 0;
   
-  otpStore.set(email, {
+  const otpStore = readOTPStore();
+  otpStore[email] = {
     otp,
     timestamp,
     attempts,
     verified: false
-  });
+  };
   
+  writeOTPStore(otpStore);
   console.log(`🔐 OTP stored for ${email}: ${otp}`);
+  console.log(`📁 Updated OTP store:`, JSON.stringify(otpStore, null, 2));
 };
 
-// Verify OTP from memory storage
-const verifyOTPFromMemory = (email, otp) => {
-  if (!otpStore.has(email)) {
+// Verify OTP from file storage
+const verifyOTPFromFile = (email, otp) => {
+  console.log(`🔍 Starting OTP verification for ${email}`);
+  console.log(`🔐 OTP to verify: ${otp}`);
+  
+  const otpStore = readOTPStore();
+  console.log(`📁 Current OTP store:`, JSON.stringify(otpStore, null, 2));
+  
+  if (!otpStore[email]) {
     console.log(`❌ No OTP found for ${email}`);
     return false;
   }
   
-  const data = otpStore.get(email);
+  const data = otpStore[email];
+  console.log(`📊 OTP data for ${email}:`, JSON.stringify(data, null, 2));
+  
   const now = Date.now();
   const timeDifference = (now - data.timestamp) / 1000 / 60; // minutes
+  console.log(`⏰ Time difference: ${timeDifference} minutes`);
   
   // Check if OTP expired (10 minutes)
   if (timeDifference > 10) {
     console.log(`⏰ OTP expired for ${email}`);
-    otpStore.delete(email);
+    delete otpStore[email];
+    writeOTPStore(otpStore);
     return false;
   }
   
@@ -151,21 +230,29 @@ const verifyOTPFromMemory = (email, otp) => {
   // Check if max attempts exceeded (5 attempts)
   if (data.attempts >= 5) {
     console.log(`🚫 Max attempts exceeded for ${email}`);
-    otpStore.delete(email);
+    delete otpStore[email];
+    writeOTPStore(otpStore);
     return false;
   }
   
   // Increment attempt counter
   data.attempts++;
+  console.log(`🔄 Attempt ${data.attempts}/5 for ${email}`);
   
   // Check if OTP matches
+  console.log(`🔍 Comparing OTP: "${data.otp}" === "${otp}"`);
   if (data.otp === otp) {
     // Mark as verified and remove from store
     data.verified = true;
-    otpStore.delete(email);
+    delete otpStore[email];
+    writeOTPStore(otpStore);
     console.log(`✅ OTP verified for ${email}`);
     return true;
   }
+  
+  // Update attempts in store
+  otpStore[email] = data;
+  writeOTPStore(otpStore);
   
   console.log(`❌ Invalid OTP for ${email}, attempt ${data.attempts}/5`);
   return false;
@@ -177,6 +264,9 @@ exports.handler = async (event, context) => {
   console.log('📝 Request body:', event.body);
 
   try {
+    // Cleanup expired data at the start of each request
+    cleanupExpiredData();
+    
     // Handle CORS
     const corsHeaders = handleCORS(event);
     
@@ -299,16 +389,11 @@ async function checkUserEmail(sheets, spreadsheetId, email) {
   return { exists: userExists };
 }
 
-// Send OTP via Gmail with rate limiting
+// Send OTP via Gmail (rate limiting removed for development)
 async function sendOTP(email) {
   console.log('📧 Sending OTP to:', email);
   
   try {
-    // Check rate limit
-    if (!checkRateLimit(email)) {
-      throw new Error('Rate limit exceeded. Maximum 3 OTP requests per hour allowed.');
-    }
-    
     // Generate secure 4-digit OTP
     const otp = generateOTP();
     console.log('🔐 Generated OTP:', otp);
@@ -358,7 +443,7 @@ async function verifyOTP(email, otp) {
   console.log('🔐 OTP received:', otp);
   
   try {
-    const isValid = verifyOTPFromMemory(email, otp);
+    const isValid = verifyOTPFromFile(email, otp);
     console.log('✅ OTP valid:', isValid);
     
     return { 
@@ -479,3 +564,5 @@ async function addBorrowerData(sheets, spreadsheetId, borrowerData) {
   console.log('✅ Borrower data added successfully');
   return { success: true, message: 'Borrower data added successfully' };
 }
+
+

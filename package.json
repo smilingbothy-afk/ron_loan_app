@@ -44,5 +44,8 @@
       "last 1 safari version"
     ]
   },
-  "homepage": "."
+  "homepage": ".",
+  "devDependencies": {
+    "concurrently": "^9.2.0"
+  }
 }
