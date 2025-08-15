@@ -20,7 +20,7 @@ const OTPVerification = ({ email, onOTPVerified }) => {
     setSuccess('');
 
     try {
-      const result = await sendOTP(email);
+      await sendOTP(email);
       setSuccess(`✅ OTP sent successfully! Check your email for the code.`);
       setCountdown(60); // 1 minute countdown
       setCanResend(false);

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { addBorrowerData, fetchFreddieMacRates } from '../services/googleSheetsService';
+import React, { useState } from 'react';
+import { addBorrowerData } from '../services/googleSheetsService';
 
 const AddBorrowerForm = ({ userEmail, onBorrowerAdded, onCancel }) => {
   const [formData, setFormData] = useState({
