@@ -7,37 +7,32 @@ const OTPVerification = ({ email, onOTPVerified }) => {
   const [isSendingOTP, setIsSendingOTP] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [canResend, setCanResend] = useState(true);
   const [countdown, setCountdown] = useState(0);
+  const [canResend, setCanResend] = useState(false);
   const [attempts, setAttempts] = useState(0);
   const inputRefs = useRef([]);
 
   const sendOTPToUser = useCallback(async () => {
+    if (!canResend) return;
+
+    setIsSendingOTP(true);
+    setError('');
+    setSuccess('');
+
     try {
-      setIsSendingOTP(true);
-      setError('');
-      setSuccess('');
-      
-      const response = await sendOTP(email);
-      
-      if (response.success) {
-        setSuccess('OTP sent to your email! Check your inbox.');
-        setCanResend(false);
-        setCountdown(60); // 60 second cooldown
-        setAttempts(0); // Reset attempts when new OTP is sent
-        
-        // Clear success message after 5 seconds
-        setTimeout(() => setSuccess(''), 5000);
-      } else {
-        setError('Failed to send OTP. Please try again.');
-      }
-    } catch (err) {
-      setError(`Failed to send OTP: ${err.message}`);
-      console.error('OTP send error:', err);
+      const result = await sendOTP(email);
+      setSuccess(`✅ OTP sent successfully! Check your email for the code.`);
+      setCountdown(60); // 1 minute countdown
+      setCanResend(false);
+      setAttempts(0);
+      setOtp(['', '', '', '']);
+      inputRefs.current[0]?.focus();
+    } catch (error) {
+      setError(`Failed to send OTP: ${error.message}`);
     } finally {
       setIsSendingOTP(false);
     }
-  }, [email]);
+  }, [email, canResend]);
 
   useEffect(() => {
     // Send OTP automatically when component mounts
@@ -55,28 +50,30 @@ const OTPVerification = ({ email, onOTPVerified }) => {
   }, [countdown]);
 
   const handleOTPChange = (index, value) => {
-    if (value.length <= 1 && /^\d*$/.test(value)) {
-      const newOTP = [...otp];
-      newOTP[index] = value;
-      setOtp(newOTP);
+    if (value.length > 1) return; // Prevent multiple characters
+    
+    const newOTP = [...otp];
+    newOTP[index] = value;
+    setOtp(newOTP);
 
-      // Auto-focus next input
-      if (value && index < 3) {
-        inputRefs.current[index + 1]?.focus();
-      }
+    // Auto-focus next input
+    if (value && index < 3) {
+      inputRefs.current[index + 1]?.focus();
     }
   };
 
   const handleKeyDown = (index, e) => {
     if (e.key === 'Backspace' && !otp[index] && index > 0) {
+      // Move to previous input on backspace if current is empty
       inputRefs.current[index - 1]?.focus();
     }
   };
 
   const handleSubmit = async () => {
     const otpString = otp.join('');
+    
     if (otpString.length !== 4) {
-      setError('Please enter a 4-digit OTP');
+      setError('Please enter the complete 4-digit OTP');
       return;
     }
 
@@ -87,7 +84,7 @@ const OTPVerification = ({ email, onOTPVerified }) => {
       const response = await verifyOTP(email, otpString);
       
       if (response.valid) {
-        setSuccess('OTP verified successfully! Redirecting...');
+        setSuccess('🎉 OTP verified successfully! Redirecting to dashboard...');
         setTimeout(() => {
           onOTPVerified();
         }, 1500);
@@ -99,7 +96,7 @@ const OTPVerification = ({ email, onOTPVerified }) => {
         
         // Lock out after 5 failed attempts
         if (attempts >= 4) {
-          setError('Too many failed attempts. Please request a new OTP.');
+          setError('🚫 Too many failed attempts. Please request a new OTP.');
           setCanResend(false);
           setCountdown(300); // 5 minute lockout
         }
@@ -121,7 +118,7 @@ const OTPVerification = ({ email, onOTPVerified }) => {
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <h2>Verify Your Identity</h2>
+        <h2>🔐 Verify Your Identity</h2>
         <p>We've sent a 4-digit OTP to <strong>{email}</strong></p>
         
         {error && <div className="error">{error}</div>}
@@ -151,31 +148,32 @@ const OTPVerification = ({ email, onOTPVerified }) => {
           className="btn" 
           onClick={handleSubmit}
           disabled={isLoading || otp.join('').length !== 4}
-          style={{
-            opacity: (isLoading || otp.join('').length !== 4) ? 0.6 : 1,
-            cursor: (isLoading || otp.join('').length !== 4) ? 'not-allowed' : 'pointer'
-          }}
         >
-          {isLoading ? 'Verifying...' : 'Verify OTP'}
+          {isLoading ? (
+            <>
+              <span className="loading-spinner"></span>
+              Verifying...
+            </>
+          ) : (
+            'Verify OTP'
+          )}
         </button>
         
         <div className="resend-otp" onClick={handleResendOTP}>
           {canResend ? (
-            'Resend OTP'
+            '🔄 Resend OTP'
           ) : (
-            `Resend OTP in ${Math.floor(countdown / 60)}:${(countdown % 60).toString().padStart(2, '0')}`
+            `⏰ Resend OTP in ${Math.floor(countdown / 60)}:${(countdown % 60).toString().padStart(2, '0')}`
           )}
         </div>
         
         {isSendingOTP && (
-          <div className="loading">Sending OTP...</div>
+          <div className="loading">
+            <span className="loading-spinner"></span>
+            Sending OTP...
+          </div>
         )}
-        
-        <div style={{ marginTop: '20px', fontSize: '14px', color: '#666' }}>
-          <p>📧 Check your email inbox (and spam folder)</p>
-          <p>⏰ OTP expires in 10 minutes</p>
-          <p>🔒 Maximum 5 attempts allowed</p>
-        </div>
+      
       </div>
     </div>
   );

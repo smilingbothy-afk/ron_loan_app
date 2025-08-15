@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { fetchBorrowerData, addBorrowerData, fetchFreddieMacRates } from '../services/googleSheetsService';
+import { fetchBorrowerData, fetchFreddieMacRates } from '../services/googleSheetsService';
 import AddBorrowerForm from './AddBorrowerForm';
 
 const Dashboard = ({ email }) => {
@@ -8,23 +8,22 @@ const Dashboard = ({ email }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
-  const [isAddingData, setIsAddingData] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
       setIsLoading(true);
       setError('');
-      
-      const [borrowers, rates] = await Promise.all([
+
+      const [borrowerResult, ratesResult] = await Promise.all([
         fetchBorrowerData(email),
         fetchFreddieMacRates()
       ]);
-      
-      setBorrowerData(borrowers);
-      setFreddieMacRates(rates);
+
+      setBorrowerData(borrowerResult);
+      setFreddieMacRates(ratesResult);
     } catch (err) {
-      setError('Error loading data. Please try again.');
-      console.error('Data loading error:', err);
+      console.error('Error loading dashboard data:', err);
+      setError('Failed to load dashboard data. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -34,175 +33,141 @@ const Dashboard = ({ email }) => {
     loadData();
   }, [loadData]);
 
-  const handleAddBorrower = async (newBorrower) => {
-    try {
-      setIsAddingData(true);
-      setError('');
-      
-      await addBorrowerData(newBorrower);
-      
-      // Reload data to show the new entry
-      await loadData();
-      
-      setShowAddForm(false);
-      setError('');
-    } catch (err) {
-      setError('Error adding borrower data. Please try again.');
-      console.error('Add borrower error:', err);
-    } finally {
-      setIsAddingData(false);
-    }
+  const handleBorrowerAdded = () => {
+    setShowAddForm(false);
+    loadData(); // Refresh data
   };
 
   const formatCurrency = (amount) => {
-    if (!amount) return 'N/A';
-    
-    // Remove commas and convert to number
-    const cleanAmount = typeof amount === 'string' ? amount.replace(/,/g, '') : amount;
-    const numAmount = parseFloat(cleanAmount);
-    
-    if (isNaN(numAmount)) return 'N/A';
-    
+    if (!amount) return '$0';
+    const num = parseFloat(amount.toString().replace(/[$,]/g, ''));
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
-    }).format(numAmount);
+    }).format(num);
   };
 
   const formatPercentage = (rate) => {
-    if (!rate) return 'N/A';
-    
-    // If it's already a percentage string, return as is
-    if (typeof rate === 'string' && rate.includes('%')) {
-      return rate;
-    }
-    
-    // Convert decimal to percentage
-    const numRate = parseFloat(rate);
-    if (isNaN(numRate)) return 'N/A';
-    
-    return `${(numRate * 100).toFixed(2)}%`;
+    if (!rate) return '0%';
+    const num = parseFloat(rate.toString().replace('%', ''));
+    return `${num.toFixed(2)}%`;
   };
 
   if (isLoading) {
     return (
-      <div className="container">
-        <div className="card">
-          <h1>Dashboard</h1>
-          <div className="loading">Loading your data...</div>
+      <div className="dashboard-container">
+        <div className="loading">
+          <span className="loading-spinner"></span>
+          Loading your loan insights...
         </div>
       </div>
     );
   }
 
+  if (error) {
+    return (
+      <div className="dashboard-container">
+        <div className="error">{error}</div>
+        <button className="btn" onClick={loadData}>
+          🔄 Try Again
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="container">
-      <div className="card">
-        <h1>Welcome, {email}</h1>
-        <p>Your mortgage refinance opportunities and data</p>
-        
-        {error && <div className="error">{error}</div>}
-        
-        <div style={{ marginBottom: '20px' }}>
-          <button 
-            className="btn" 
-            onClick={() => setShowAddForm(!showAddForm)}
-          >
-            {showAddForm ? 'Cancel' : 'Add New Borrower'}
-          </button>
-        </div>
-        
-        {showAddForm && (
-          <div className="card">
-            <h2>Add New Borrower</h2>
-            <AddBorrowerForm 
-              onSubmit={handleAddBorrower}
-              isLoading={isAddingData}
-              userEmail={email}
-              freddieMacRates={freddieMacRates}
-            />
-          </div>
-        )}
-        
-        <div className="card">
-          <h2>Your Borrower Data</h2>
-          {borrowerData.length === 0 ? (
-            <p>No borrower data found. Add your first borrower above.</p>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Borrower Last Name</th>
-                    <th>Current Loan Amount</th>
-                    <th>Current Interest Rate</th>
-                    <th>Current Monthly Rate</th>
-                    <th>Desired Monthly Savings</th>
-                    <th>Current Payment</th>
-                    <th>Freddie Mac Rate</th>
-                    <th>Freddie Mac Monthly Rate</th>
-                    <th>Estimated New Payment</th>
-                    <th>Estimated Savings</th>
-                    <th>Refi Opportunity</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {borrowerData.map((borrower, index) => (
-                    <tr key={index}>
-                      <td>{borrower["Borrower Last Name"]}</td>
-                      <td>{formatCurrency(borrower["Current Loan Amount"])}</td>
-                      <td>{formatPercentage(borrower["Current Interest Rate"])}</td>
-                      <td>{formatPercentage(borrower["Current Monthly Rate"])}</td>
-                      <td>{formatCurrency(borrower["Desired Monthly Savings"])}</td>
-                      <td>{formatCurrency(borrower["Current Payment"])}</td>
-                      <td>{formatPercentage(borrower["Freddie Mac Rate"])}</td>
-                      <td>{formatPercentage(borrower["Freddie Mac Monthly Rate"])}</td>
-                      <td>{formatCurrency(borrower["Estimated New Payment"])}</td>
-                      <td>{formatCurrency(borrower["Estimated Savings"])}</td>
-                      <td>
-                        <span style={{ 
-                          color: borrower["Refi Opportunity"] === 'TRUE' ? '#28a745' : '#dc3545',
-                          fontWeight: 'bold'
-                        }}>
-                          {borrower["Refi Opportunity"] === 'TRUE' ? 'YES' : 'NO'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-        
-        <div className="card">
-          <h2>Current Freddie Mac Rates</h2>
-          {freddieMacRates.length === 0 ? (
-            <p>No Freddie Mac rates available.</p>
-          ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>30-Year Fixed Rate</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {freddieMacRates.map((rate, index) => (
-                    <tr key={index}>
-                      <td>{rate["Date"] || 'N/A'}</td>
-                      <td>{formatPercentage(rate["30-Year Fixed Rate"])}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+    <div className="dashboard-container">
+      {/* Freddie Mac Rates */}
+      <div className="data-section">
+        <h3>📈 Current Market Rates</h3>
+        <div className="data-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>30-Year Fixed Rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {freddieMacRates.map((rate, index) => (
+                <tr key={index}>
+                  <td>{rate.Date}</td>
+                  <td>{rate['30-Year Fixed Rate']}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
+
+      {/* Borrower Data */}
+      <div className="data-section">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h3>🏠 Borrowers</h3>
+          <button 
+            className="btn" 
+            onClick={() => setShowAddForm(true)}
+            style={{ maxWidth: '200px', margin: 0 }}
+          >
+            📝 Add New Borrower
+          </button>
+        </div>
+        <div className="data-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Borrower</th>
+                <th>Loan Amount</th>
+                <th>Current Rate</th>
+                <th>Current Payment</th>
+                <th>Freddie Mac Rate</th>
+                <th>Monthly Savings</th>
+                <th>Refi Opportunity</th>
+              </tr>
+            </thead>
+            <tbody>
+              {borrowerData.map((borrower, index) => (
+                <tr key={index}>
+                  <td>{borrower['Borrower Last Name']}</td>
+                  <td>{formatCurrency(borrower['Current Loan Amount'])}</td>
+                  <td>{formatPercentage(borrower['Current Interest Rate'])}</td>
+                  <td>{formatCurrency(borrower['Current Payment'])}</td>
+                  <td>{formatPercentage(borrower['Freddie Mac Rate'])}</td>
+                  <td style={{ 
+                    color: parseFloat(borrower['Estimated Savings']?.replace(/[$,]/g, '') || 0) > 0 ? '#48bb78' : '#e53e3e',
+                    fontWeight: '600'
+                  }}>
+                    {formatCurrency(borrower['Estimated Savings'])}
+                  </td>
+                  <td>
+                    <span style={{
+                      padding: '4px 8px',
+                      borderRadius: '12px',
+                      fontSize: '0.8rem',
+                      fontWeight: '600',
+                      backgroundColor: borrower['Refi Opportunity'] === 'TRUE' ? '#c6f6d5' : '#fed7d7',
+                      color: borrower['Refi Opportunity'] === 'TRUE' ? '#2f855a' : '#c53030'
+                    }}>
+                      {borrower['Refi Opportunity'] === 'TRUE' ? '✅ Yes' : '❌ No'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Modal for Add Borrower Form */}
+      {showAddForm && (
+        <AddBorrowerForm 
+          userEmail={email}
+          onBorrowerAdded={handleBorrowerAdded}
+          onCancel={() => setShowAddForm(false)}
+        />
+      )}
     </div>
   );
 };

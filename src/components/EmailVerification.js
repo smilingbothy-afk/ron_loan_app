@@ -1,76 +1,92 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { checkUserEmail } from '../services/googleSheetsService';
 
-const EmailVerification = ({ email, onEmailVerified }) => {
-  const [isLoading, setIsLoading] = useState(true);
-  const [isValidUser, setIsValidUser] = useState(false);
+const EmailVerification = ({ onEmailVerified }) => {
+  const [email, setEmail] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
-  const verifyUserEmail = useCallback(async () => {
+  const handleSubmit = useCallback(async (e) => {
+    e.preventDefault();
+    
+    if (!email.trim()) {
+      setError('Please enter your email address');
+      return;
+    }
+
+    setIsLoading(true);
+    setError('');
+    setSuccess('');
+
     try {
-      setIsLoading(true);
-      setError('');
+      const exists = await checkUserEmail(email);
       
-      const isValid = await checkUserEmail(email);
-      
-      if (isValid) {
-        setIsValidUser(true);
-        // Automatically proceed to OTP verification
+      if (exists) {
+        setSuccess('Email verified successfully!');
+        // Wait a moment before proceeding to show success message
         setTimeout(() => {
-          onEmailVerified();
+          onEmailVerified(email);
         }, 1000);
       } else {
         setError('Email not found in our system. Please contact support.');
       }
     } catch (err) {
-      setError('Error verifying email. Please try again.');
-      console.error('Email verification error:', err);
+      console.error('Error verifying email:', err);
+      setError('Failed to verify email. Please try again.');
     } finally {
       setIsLoading(false);
     }
   }, [email, onEmailVerified]);
 
-  useEffect(() => {
-    verifyUserEmail();
-  }, [verifyUserEmail]);
+  const handleInputChange = (e) => {
+    setEmail(e.target.value);
+    // Clear error when user starts typing
+    if (error) setError('');
+  };
 
-  if (isLoading) {
-    return (
-      <div className="auth-container">
-        <div className="auth-card">
-          <h2>Verifying Email</h2>
-          <div className="loading">Checking if your email is registered...</div>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="auth-container">
-        <div className="auth-card">
-          <h2>Access Denied</h2>
-          <div className="error">{error}</div>
-          <p>Please contact support if you believe this is an error.</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (isValidUser) {
-    return (
-      <div className="auth-container">
-        <div className="auth-card">
-          <h2>Email Verified!</h2>
-          <div className="success">
-            Email {email} is verified. Redirecting to OTP verification...
+  return (
+    <div className="auth-container">
+      <div className="auth-card">
+        <h2>🔐 Email Verification</h2>
+        <p>Please enter your email address to access your loan portfolio</p>
+        
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label htmlFor="email">Email Address</label>
+            <input
+              type="email"
+              id="email"
+              name="email"
+              value={email}
+              onChange={handleInputChange}
+              placeholder="Enter your email address"
+              required
+              disabled={isLoading}
+            />
           </div>
-        </div>
-      </div>
-    );
-  }
 
-  return null;
+          {error && <div className="error">{error}</div>}
+          {success && <div className="success">{success}</div>}
+
+          <button 
+            type="submit" 
+            className="btn" 
+            disabled={isLoading || !email.trim()}
+          >
+            {isLoading ? (
+              <>
+                <span className="loading-spinner"></span>
+                Verifying Email...
+              </>
+            ) : (
+              'Verify Email'
+            )}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
 };
 
 export default EmailVerification;

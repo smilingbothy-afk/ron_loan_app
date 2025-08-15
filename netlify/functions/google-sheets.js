@@ -533,36 +533,120 @@ async function fetchFreddieMacRates(sheets, spreadsheetId) {
 async function addBorrowerData(sheets, spreadsheetId, borrowerData) {
   console.log('➕ Adding new borrower data:', borrowerData);
   
-  // Prepare values array in the correct order
-  const values = [
-    borrowerData['Borrower Last Name'] || '',
-    borrowerData['Current Loan Amount'] || '',
-    borrowerData['Current Interest Rate'] || '',
-    borrowerData['Current Monthly Rate'] || '',
-    borrowerData['Desired Monthly Savings'] || '',
-    borrowerData['User Email'] || '',
-    borrowerData['Current Payment'] || '',
-    borrowerData['Freddie Mac Rate'] || '',
-    borrowerData['Freddie Mac Monthly Rate'] || '',
-    borrowerData['Estimated New Payment'] || '',
-    borrowerData['Estimated Savings'] || '',
-    borrowerData['Refi Opportunity'] || ''
-  ];
-
-  console.log('📊 Values to add:', values);
-
-  const response = await sheets.spreadsheets.values.append({
-    spreadsheetId,
-    range: 'Borrower_Data!A:L',
-    valueInputOption: 'RAW',
-    insertDataOption: 'INSERT_ROWS',
-    resource: {
-      values: [values]
+  try {
+    // Step 1: Get current Freddie Mac rate for calculations
+    const freddieMacResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Freddie_Mac_Rate!B2'
+    });
+    
+    const freddieMacRate = freddieMacResponse.data.values?.[0]?.[0] || '6.00%';
+    console.log('📈 Current Freddie Mac Rate:', freddieMacRate);
+    
+    // Step 2: Parse and calculate all values with proper type conversion
+    // Handle both string and number inputs from frontend
+    let loanAmount, interestRate;
+    
+    // Parse loan amount
+    if (typeof borrowerData['Current Loan Amount'] === 'string') {
+      loanAmount = parseFloat(borrowerData['Current Loan Amount'].replace(/[$,]/g, ''));
+    } else {
+      loanAmount = parseFloat(borrowerData['Current Loan Amount'] || 0);
     }
-  });
+    
+    // Parse interest rate
+    if (typeof borrowerData['Current Interest Rate'] === 'string') {
+      interestRate = parseFloat(borrowerData['Current Interest Rate'].replace('%', ''));
+    } else {
+      interestRate = parseFloat(borrowerData['Current Interest Rate'] || 0);
+    }
+    
+    const desiredSavings = parseFloat(borrowerData['Desired Monthly Savings'] || 0);
+    
+    // Validate required fields
+    if (!loanAmount || isNaN(loanAmount)) {
+      throw new Error(`Invalid loan amount: ${borrowerData['Current Loan Amount']}`);
+    }
+    if (!interestRate || isNaN(interestRate)) {
+      throw new Error(`Invalid interest rate: ${borrowerData['Current Interest Rate']}`);
+    }
+    
+    console.log('📊 Parsed values:', {
+      loanAmount,
+      interestRate,
+      desiredSavings,
+      freddieMacRate,
+      originalLoanAmount: borrowerData['Current Loan Amount'],
+      originalInterestRate: borrowerData['Current Interest Rate']
+    });
+    
+    // Convert Freddie Mac rate to number
+    const freddieMacRateNum = parseFloat(freddieMacRate.replace('%', ''));
+    
+    // Calculate all values using the provided formulas
+    const currentMonthlyRate = interestRate / 100 / 12; // C:C/12 (divide by 100 first, then by 12)
+    const currentPayment = loanAmount * ((currentMonthlyRate * Math.pow(1 + currentMonthlyRate, 360)) / (Math.pow(1 + currentMonthlyRate, 360) - 1));
+    const freddieMacMonthlyRate = freddieMacRateNum / 100 / 12; // H3/12
+    const estimatedNewPayment = loanAmount * ((freddieMacMonthlyRate * Math.pow(1 + freddieMacMonthlyRate, 360)) / (Math.pow(1 + freddieMacMonthlyRate, 360) - 1));
+    const estimatedSavings = currentPayment - estimatedNewPayment;
+    const refiOpportunity = estimatedSavings >= desiredSavings;
+    
+    console.log('🧮 Calculated values:', {
+      currentMonthlyRate: currentMonthlyRate.toFixed(6),
+      currentPayment: Math.round(currentPayment),
+      freddieMacMonthlyRate: freddieMacMonthlyRate.toFixed(6),
+      estimatedNewPayment: Math.round(estimatedNewPayment),
+      estimatedSavings: Math.round(estimatedSavings),
+      refiOpportunity: refiOpportunity
+    });
+    
+    // Step 3: Prepare values array with calculated results
+    const values = [
+      borrowerData['Borrower Name'] || '',
+      borrowerData['Current Loan Amount'] || '',
+      (interestRate / 100).toFixed(2), // Store interest rate divided by 100 (e.g., 6.50% → 0.065)
+      currentMonthlyRate.toFixed(7), // Current Monthly Rate (calculated)
+      borrowerData['Desired Monthly Savings'] || '',
+      borrowerData['User Email'] || '',
+      Math.round(currentPayment), // Current Payment (calculated)
+      freddieMacRate, // Freddie Mac Rate (from sheet)
+      freddieMacMonthlyRate.toFixed(6), // Freddie Mac Monthly Rate (calculated)
+      Math.round(estimatedNewPayment), // Estimated New Payment (calculated)
+      Math.round(estimatedSavings), // Estimated Savings (calculated)
+      refiOpportunity ? 'TRUE' : 'FALSE' // Refi Opportunity (calculated)
+    ];
 
-  console.log('✅ Borrower data added successfully');
-  return { success: true, message: 'Borrower data added successfully' };
+    console.log('📊 Final values to store:', values);
+
+    // Step 4: Add the new row with all calculated values
+    const response = await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: 'Borrower_Data!A:L',
+      valueInputOption: 'RAW',
+      insertDataOption: 'INSERT_ROWS',
+      resource: {
+        values: [values]
+      }
+    });
+
+    console.log('✅ Borrower data added successfully with all calculated values');
+    return { 
+      success: true, 
+      message: 'Borrower data added successfully with all calculations completed',
+      calculatedValues: {
+        currentMonthlyRate: currentMonthlyRate.toFixed(6),
+        currentPayment: Math.round(currentPayment),
+        freddieMacMonthlyRate: freddieMacMonthlyRate.toFixed(6),
+        estimatedNewPayment: Math.round(estimatedNewPayment),
+        estimatedSavings: Math.round(estimatedSavings),
+        refiOpportunity: refiOpportunity
+      }
+    };
+
+  } catch (error) {
+    console.error('💥 Error in addBorrowerData:', error);
+    throw new Error(`Failed to add borrower data: ${error.message}`);
+  }
 }
 
 
