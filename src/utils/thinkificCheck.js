@@ -3,16 +3,25 @@ export const isRunningInThinkific = () => {
   // Check if THINKIFIC_RESTRICTED environment variable is set
   const isRestricted = process.env.REACT_APP_THINKIFIC_RESTRICTED === '1';
   
+  console.log('🔐 Thinkific Check Debug:', {
+    envVar: process.env.REACT_APP_THINKIFIC_RESTRICTED,
+    isRestricted: isRestricted,
+    isInIframe: window.self !== window.top
+  });
+  
+  // If not restricted, always allow access
   if (!isRestricted) {
-    // If THINKIFIC_RESTRICTED is not set to 1, allow access outside Thinkific
-    return false;
+    console.log('✅ Access allowed: Not restricted');
+    return true; // Allow access anywhere when not restricted
   }
   
+  // If restricted, check iframe and domain
   // Check if we're running inside an iframe
   const isInIframe = window.self !== window.top;
   
   if (!isInIframe) {
-    return false;
+    console.log('❌ Access denied: Not in iframe');
+    return false; // Deny access if not in iframe
   }
   
   // Check if the parent window is from Thinkific
@@ -23,8 +32,14 @@ export const isRunningInThinkific = () => {
     const isThinkificDomain = parentHostname.includes('thinkific.com') || 
                               parentHostname.includes('rvionline.thinkific.com');
     
+    console.log('🔍 Domain check:', {
+      parentHostname,
+      isThinkificDomain
+    });
+    
     return isThinkificDomain;
   } catch (error) {
+    console.log('⚠️ Error checking parent domain, assuming Thinkific:', error);
     // If we can't access parent origin due to same-origin policy, 
     // assume it's Thinkific if we're in an iframe
     return true;
@@ -33,15 +48,15 @@ export const isRunningInThinkific = () => {
 
 // Function to redirect or show error if not in Thinkific
 export const enforceThinkificAccess = () => {
-  if (isRunningInThinkific()) {
-    return true; // Allow access
+  console.log('🚪 Enforcing Thinkific access...');
+  
+  // If not restricted, allow access anywhere
+  if (process.env.REACT_APP_THINKIFIC_RESTRICTED !== '1') {
+    console.log('✅ Access allowed: Not restricted');
+    return true; // Allow access anywhere
   }
   
-  // If THINKIFIC_RESTRICTED is set but we're not in Thinkific, show error
-  if (process.env.REACT_APP_THINKIFIC_RESTRICTED === '1') {
-    return false; // Deny access
-  }
-  
-  // If THINKIFIC_RESTRICTED is not set to 1, allow access anywhere
-  return true;
+  console.log('🔒 Access restricted: Checking Thinkific...');
+  // If restricted, check if running in Thinkific
+  return isRunningInThinkific();
 };
