@@ -17,7 +17,6 @@ export const isRunningInThinkific = () => {
   
   // Check if the parent window is from Thinkific
   try {
-    const parentOrigin = window.parent.location.origin;
     const parentHostname = window.parent.location.hostname;
     
     // Check if parent is Thinkific domain
