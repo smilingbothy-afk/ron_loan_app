@@ -3,7 +3,7 @@ const nodemailer = require('nodemailer');
 const fs = require('fs');
 const path = require('path');
 
-// NOTE: When RUN_ON_THINKIFIC=TRUE, OTP functionality is disabled
+// NOTE: When RUN_ON_THINKIFIC environment variable is set, OTP functionality is disabled
 // OTP functions are kept for development/testing purposes when running outside Thinkific
 
 // Service account credentials - these will be environment variables

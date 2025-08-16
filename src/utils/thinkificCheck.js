@@ -1,10 +1,10 @@
 // Utility function to check if the app is running inside Thinkific iframe
 export const isRunningInThinkific = () => {
-  // Check if RUN_ON_THINKIFIC environment variable is set to true
-  const runOnThinkific = process.env.REACT_APP_RUN_ON_THINKIFIC === 'TRUE';
+  // Check if THINKIFIC_RESTRICTED environment variable is set
+  const isRestricted = process.env.REACT_APP_THINKIFIC_RESTRICTED === '1';
   
-  if (!runOnThinkific) {
-    // If RUN_ON_THINKIFIC is false, allow access outside Thinkific
+  if (!isRestricted) {
+    // If THINKIFIC_RESTRICTED is not set to 1, allow access outside Thinkific
     return false;
   }
   
@@ -37,11 +37,11 @@ export const enforceThinkificAccess = () => {
     return true; // Allow access
   }
   
-  // If RUN_ON_THINKIFIC is true but we're not in Thinkific, show error
-  if (process.env.REACT_APP_RUN_ON_THINKIFIC === 'TRUE') {
+  // If THINKIFIC_RESTRICTED is set but we're not in Thinkific, show error
+  if (process.env.REACT_APP_THINKIFIC_RESTRICTED === '1') {
     return false; // Deny access
   }
   
-  // If RUN_ON_THINKIFIC is false, allow access anywhere
+  // If THINKIFIC_RESTRICTED is not set to 1, allow access anywhere
   return true;
 };
