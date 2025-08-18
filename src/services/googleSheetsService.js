@@ -135,6 +135,37 @@ export const addBorrowerData = async (borrowerData) => {
   }
 };
 
+// Update existing borrower data
+export const updateBorrowerData = async (borrowerId, borrowerData) => {
+  console.log('✏️ Updating borrower data:', { borrowerId, borrowerData });
+  
+  try {
+    const result = await callNetlifyFunction('updateBorrowerData', { 
+      borrowerId, 
+      borrowerData 
+    });
+    console.log('✅ Borrower data updated:', result);
+    return result;
+  } catch (error) {
+    console.error('❌ Error updating borrower data:', error);
+    throw error;
+  }
+};
+
+// Delete borrower data
+export const deleteBorrowerData = async (borrowerId) => {
+  console.log('🗑️ Deleting borrower data:', borrowerId);
+  
+  try {
+    const result = await callNetlifyFunction('deleteBorrowerData', { borrowerId });
+    console.log('✅ Borrower data deleted:', result);
+    return result;
+  } catch (error) {
+    console.error('❌ Error deleting borrower data:', error);
+    throw error;
+  }
+};
+
 // Get best Freddie Mac rate (helper function)
 export const getBestFreddieMacRate = (freddieMacRates) => {
   console.log('🏆 Getting best Freddie Mac rate from:', freddieMacRates);

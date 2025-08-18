@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { fetchBorrowerData, fetchFreddieMacRates } from '../services/googleSheetsService';
+import { fetchBorrowerData, fetchFreddieMacRates, deleteBorrowerData } from '../services/googleSheetsService';
 import AddBorrowerForm from './AddBorrowerForm';
+import EditBorrowerForm from './EditBorrowerForm';
 
 const Dashboard = ({ email }) => {
   const [borrowerData, setBorrowerData] = useState([]);
@@ -8,6 +9,9 @@ const Dashboard = ({ email }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [selectedBorrower, setSelectedBorrower] = useState(null);
+  const [success, setSuccess] = useState('');
 
   const loadData = useCallback(async () => {
     try {
@@ -19,6 +23,7 @@ const Dashboard = ({ email }) => {
         fetchFreddieMacRates()
       ]);
 
+      // No need to add row index anymore - unique ID is already in the data
       setBorrowerData(borrowerResult);
       setFreddieMacRates(ratesResult);
     } catch (err) {
@@ -38,6 +43,37 @@ const Dashboard = ({ email }) => {
     loadData(); // Refresh data
   };
 
+  const handleBorrowerUpdated = () => {
+    setShowEditForm(false);
+    setSelectedBorrower(null);
+    loadData(); // Refresh data
+  };
+
+  const handleEditBorrower = (borrower) => {
+    setSelectedBorrower(borrower);
+    setShowEditForm(true);
+  };
+
+  const handleDeleteBorrower = async (borrower) => {
+    if (!window.confirm(`Are you sure you want to delete ${borrower['Borrower Name'] || borrower['Borrower Last Name']}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      // Use the unique ID from the borrower data, or fallback to borrower name
+      const uniqueId = borrower['Unique ID'] || borrower['Borrower Last Name'];
+      await deleteBorrowerData(uniqueId);
+      setSuccess('Borrower deleted successfully!');
+      loadData(); // Refresh data
+    } catch (err) {
+      console.error('Error deleting borrower:', err);
+      setError('Failed to delete borrower. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const formatCurrency = (amount) => {
     if (!amount) return '$0';
     const num = parseFloat(amount.toString().replace(/[$,]/g, ''));
@@ -54,6 +90,16 @@ const Dashboard = ({ email }) => {
     const num = parseFloat(rate.toString().replace('%', ''));
     return `${num.toFixed(2)}%`;
   };
+
+  // Clear success message after 3 seconds
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => {
+        setSuccess('');
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
 
   if (isLoading) {
     return (
@@ -79,6 +125,7 @@ const Dashboard = ({ email }) => {
 
   return (
     <div className="dashboard-container">
+      {success && <div className="success">{success}</div>}
       {/* Freddie Mac Rates */}
       <div className="data-section">
         <h3>📈 Current Market Rates</h3>
@@ -125,12 +172,13 @@ const Dashboard = ({ email }) => {
                 <th>Freddie Mac Rate</th>
                 <th>Monthly Savings</th>
                 <th>Refi Opportunity</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {borrowerData.map((borrower, index) => (
-                <tr key={index}>
-                  <td>{borrower['Borrower Last Name']}</td>
+                <tr key={borrower['Unique ID'] || borrower['ID'] || borrower[0] || index}>
+                  <td>{borrower['Borrower Name'] || borrower['Borrower Last Name'] || ''}</td>
                   <td>{formatCurrency(borrower['Current Loan Amount'])}</td>
                   <td>{formatPercentage(borrower['Current Interest Rate'])}</td>
                   <td>{formatCurrency(borrower['Current Payment'])}</td>
@@ -153,6 +201,22 @@ const Dashboard = ({ email }) => {
                       {borrower['Refi Opportunity'] === 'TRUE' ? '✅ Yes' : '❌ No'}
                     </span>
                   </td>
+                  <td className="actions-column">
+                    <button 
+                      className="icon-btn edit-btn" 
+                      onClick={() => handleEditBorrower(borrower)}
+                      title="Edit Borrower"
+                    >
+                      ✏️
+                    </button>
+                    <button 
+                      className="icon-btn delete-btn" 
+                      onClick={() => handleDeleteBorrower(borrower)}
+                      title="Delete Borrower"
+                    >
+                      🗑️
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -166,6 +230,16 @@ const Dashboard = ({ email }) => {
           userEmail={email}
           onBorrowerAdded={handleBorrowerAdded}
           onCancel={() => setShowAddForm(false)}
+        />
+      )}
+
+      {/* Modal for Edit Borrower Form */}
+      {showEditForm && selectedBorrower && (
+        <EditBorrowerForm
+          borrower={selectedBorrower}
+          userEmail={email}
+          onBorrowerUpdated={handleBorrowerUpdated}
+          onCancel={() => setShowEditForm(false)}
         />
       )}
     </div>

@@ -157,14 +157,14 @@ const getGoogleSheets = () => {
     
     console.log('🔐 Creating Google Auth with validated credentials...');
     
-    const auth = new google.auth.GoogleAuth({
-      credentials: serviceAccountCredentials,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets']
-    });
+  const auth = new google.auth.GoogleAuth({
+    credentials: serviceAccountCredentials,
+    scopes: ['https://www.googleapis.com/auth/spreadsheets']
+  });
     
     console.log('✅ Google Auth created successfully');
-    
-    return google.sheets({ version: 'v4', auth });
+  
+  return google.sheets({ version: 'v4', auth });
   } catch (error) {
     console.error('💥 Error creating Google Auth:', error);
     console.error('🔐 Credentials validation failed:', {
@@ -358,33 +358,41 @@ exports.handler = async (event, context) => {
     //   }
     // } else {
       // Handle Google Sheets actions
-      const sheets = getGoogleSheets();
-      const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
+    const sheets = getGoogleSheets();
+    const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
 
-      if (!spreadsheetId) {
-        throw new Error('Spreadsheet ID not configured');
-      }
+    if (!spreadsheetId) {
+      throw new Error('Spreadsheet ID not configured');
+    }
 
-      switch (action) {
-        case 'checkUserEmail':
-          result = await checkUserEmail(sheets, spreadsheetId, params.email);
+    switch (action) {
+      case 'checkUserEmail':
+        result = await checkUserEmail(sheets, spreadsheetId, params.email);
+        break;
+      
+      case 'fetchBorrowerData':
+        result = await fetchBorrowerData(sheets, spreadsheetId, params.userEmail);
+        break;
+      
+      case 'fetchFreddieMacRates':
+        result = await fetchFreddieMacRates(sheets, spreadsheetId);
+        break;
+      
+      case 'addBorrowerData':
+        result = await addBorrowerData(sheets, spreadsheetId, params.borrowerData);
+        break;
+      
+        case 'updateBorrowerData':
+          result = await updateBorrowerData(sheets, spreadsheetId, params.borrowerId, params.borrowerData);
           break;
         
-        case 'fetchBorrowerData':
-          result = await fetchBorrowerData(sheets, spreadsheetId, params.userEmail);
+        case 'deleteBorrowerData':
+          result = await deleteBorrowerData(sheets, spreadsheetId, params.borrowerId);
           break;
         
-        case 'fetchFreddieMacRates':
-          result = await fetchFreddieMacRates(sheets, spreadsheetId);
-          break;
-        
-        case 'addBorrowerData':
-          result = await addBorrowerData(sheets, spreadsheetId, params.borrowerData);
-          break;
-        
-        default:
-          throw new Error(`Unknown action: ${action}`);
-      }
+      default:
+        throw new Error(`Unknown action: ${action}`);
+    }
     // }
 
     console.log('✅ Operation successful:', action);
@@ -516,7 +524,7 @@ async function fetchBorrowerData(sheets, spreadsheetId, userEmail) {
   
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: 'Borrower_Data!A:L'
+    range: 'Borrower_Data!A:M' // Updated to include unique ID column
   });
 
   const values = response.data.values || [];
@@ -532,9 +540,22 @@ async function fetchBorrowerData(sheets, spreadsheetId, userEmail) {
   console.log('📋 Headers:', headers);
   console.log('📊 Total rows:', dataRows.length);
 
+  // Find the User Email column index dynamically
+  const userEmailIndex = headers.findIndex(header => 
+    header.toLowerCase().includes('user email') || 
+    header.toLowerCase().includes('email')
+  );
+  
+  if (userEmailIndex === -1) {
+    console.error('❌ User Email column not found in headers:', headers);
+    return [];
+  }
+  
+  console.log('📧 User Email column found at index:', userEmailIndex);
+
   // Filter data for the specific user
   const userData = dataRows
-    .filter(row => row[5] === userEmail) // User Email is at index 5
+    .filter(row => row[userEmailIndex] === userEmail)
     .map(row => {
       const borrower = {};
       headers.forEach((header, index) => {
@@ -597,7 +618,11 @@ async function addBorrowerData(sheets, spreadsheetId, borrowerData) {
     const freddieMacRate = freddieMacResponse.data.values?.[0]?.[0] || '6.00%';
     console.log('📈 Current Freddie Mac Rate:', freddieMacRate);
     
-    // Step 2: Parse and calculate all values with proper type conversion
+    // Step 2: Generate unique ID for this borrower
+    const uniqueId = `borrower_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    console.log('🆔 Generated unique ID:', uniqueId);
+    
+    // Step 3: Parse and calculate all values with proper type conversion
     // Handle both string and number inputs from frontend
     let loanAmount, interestRate;
     
@@ -654,39 +679,41 @@ async function addBorrowerData(sheets, spreadsheetId, borrowerData) {
       refiOpportunity: refiOpportunity
     });
     
-    // Step 3: Prepare values array with calculated results
+    // Step 4: Prepare values array with calculated results and unique ID
     const values = [
-      borrowerData['Borrower Name'] || '',
-      borrowerData['Current Loan Amount'] || '',
-      (interestRate / 100).toFixed(2), // Store interest rate divided by 100 (e.g., 6.50% → 0.065)
-      currentMonthlyRate.toFixed(7), // Current Monthly Rate (calculated)
-      borrowerData['Desired Monthly Savings'] || '',
-      borrowerData['User Email'] || '',
-      Math.round(currentPayment), // Current Payment (calculated)
-      freddieMacRate, // Freddie Mac Rate (from sheet)
-      freddieMacMonthlyRate.toFixed(6), // Freddie Mac Monthly Rate (calculated)
-      Math.round(estimatedNewPayment), // Estimated New Payment (calculated)
-      Math.round(estimatedSavings), // Estimated Savings (calculated)
-      refiOpportunity ? 'TRUE' : 'FALSE' // Refi Opportunity (calculated)
+      uniqueId, // Column A: Unique ID
+      borrowerData['Borrower Name'] || '', // Column B: Borrower Name
+      borrowerData['Current Loan Amount'] || '', // Column C: Current Loan Amount
+      interestRate/100, // Column D: Store interest rate exactly as input (e.g., 6.5)
+      "=D:D/12",
+      borrowerData['Desired Monthly Savings'] || '', // Column F: Desired Monthly Savings
+      borrowerData['User Email'] || '', // Column G: User Email
+      "=C:C*((E:E*(1+E:E)^360)/((1+E:E)^360-1))",
+      "=Freddie_Mac_Rate!B$2",
+      "=I:I/12",
+      "=C:C*((J:J*(1+J:J)^360)/((1+J:J)^360-1))",
+      "=$H:$H-$K:$K",
+      "=IF($L:$L >= $F:$F, TRUE, FALSE)"
     ];
 
     console.log('📊 Final values to store:', values);
 
-    // Step 4: Add the new row with all calculated values
-    const response = await sheets.spreadsheets.values.append({
-      spreadsheetId,
-      range: 'Borrower_Data!A:L',
-      valueInputOption: 'RAW',
-      insertDataOption: 'INSERT_ROWS',
-      resource: {
-        values: [values]
-      }
-    });
+    // Step 5: Add the new row with all calculated values
+  const response = await sheets.spreadsheets.values.append({
+    spreadsheetId,
+      range: 'Borrower_Data!A:M', // Updated to include unique ID column
+    valueInputOption: 'USER_ENTERED',
+    insertDataOption: 'INSERT_ROWS',
+    resource: {
+      values: [values]
+    }
+  });
 
     console.log('✅ Borrower data added successfully with all calculated values');
     return { 
       success: true, 
       message: 'Borrower data added successfully with all calculations completed',
+      uniqueId: uniqueId,
       calculatedValues: {
         currentMonthlyRate: currentMonthlyRate.toFixed(6),
         currentPayment: Math.round(currentPayment),
@@ -700,6 +727,199 @@ async function addBorrowerData(sheets, spreadsheetId, borrowerData) {
   } catch (error) {
     console.error('💥 Error in addBorrowerData:', error);
     throw new Error(`Failed to add borrower data: ${error.message}`);
+  }
+}
+
+// Update existing borrower data
+async function updateBorrowerData(sheets, spreadsheetId, borrowerId, borrowerData) {
+  console.log('✏️ Updating borrower data:', { borrowerId, borrowerData });
+
+  try {
+    // Step 1: Find the row with the specified unique ID or borrower name
+    const searchResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Borrower_Data!A:M'
+    });
+
+    const searchValues = searchResponse.data.values || [];
+    if (searchValues.length === 0) {
+      throw new Error('No borrower data found');
+    }
+
+    const headers = searchValues[0];
+    const dataRows = searchValues.slice(1);
+
+    // Find row index
+    let rowIndex = -1;
+    if (borrowerId && borrowerId !== 'undefined') {
+      for (let i = 0; i < dataRows.length; i++) {
+        if (dataRows[i][0] === borrowerId) {
+          rowIndex = i;
+          break;
+        }
+      }
+    }
+
+    if (rowIndex === -1) {
+      const borrowerName = borrowerData['Borrower Name'];
+      const borrowerNameIndex = headers.findIndex(header =>
+        header.toLowerCase().includes('borrower name')
+      );
+      if (borrowerNameIndex !== -1) {
+        for (let i = 0; i < dataRows.length; i++) {
+          if (dataRows[i][borrowerNameIndex] === borrowerName) {
+            rowIndex = i;
+            break;
+          }
+        }
+      }
+    }
+
+    if (rowIndex === -1) {
+      throw new Error(`Borrower with ID ${borrowerId} or name ${borrowerData['Borrower Name']} not found`);
+    }
+
+    let uniqueId = borrowerId;
+    if (!uniqueId || uniqueId === 'undefined') {
+      uniqueId = `borrower_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      console.log('🆔 Generated new unique ID for existing borrower:', uniqueId);
+    }
+    
+    const values = [
+      uniqueId, // Column A: Unique ID
+      borrowerData['Borrower Name'] || '', // Column B: Borrower Name
+      borrowerData['Current Loan Amount'] || '', // Column C: Current Loan Amount
+      (borrowerData['Current Interest Rate']/100) || '', // Column D: Current Interest Rate (decimal form)
+      "=D:D/12",
+      borrowerData['Desired Monthly Savings'] || '', // Column F: Desired Monthly Savings
+      borrowerData['User Email'] || '', // Column G: User Email
+      "=C:C*((E:E*(1+E:E)^360)/((1+E:E)^360-1))",
+      "=Freddie_Mac_Rate!B$2",
+      "=I:I/12",
+      "=C:C*((J:J*(1+J:J)^360)/((1+J:J)^360-1))",
+      "=$H:$H-$K:$K",
+      "=IF($L:$L >= $F:$F, TRUE, FALSE)"
+    ];
+    
+    // Step 5: Update the specific row
+    const range = `Borrower_Data!A${rowIndex + 2}:M${rowIndex + 2}`; 
+    // +2 → because rowIndex is zero-based & row 1 is headers
+    
+    const response = await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range,
+      valueInputOption: 'USER_ENTERED', // IMPORTANT: allows formulas to work
+      resource: {
+        values: [values]
+      }
+    });
+
+    console.log('✅ Borrower data updated successfully (with formulas)');
+    return {
+      success: true,
+      message: 'Borrower data updated successfully with formulas applied'
+    };
+
+  } catch (error) {
+    console.error('💥 Error in updateBorrowerData:', error);
+    throw new Error(`Failed to update borrower data: ${error.message}`);
+  }
+}
+
+
+// Delete borrower data
+async function deleteBorrowerData(sheets, spreadsheetId, borrowerId) {
+  console.log('🗑️ Deleting borrower with key:', borrowerId);
+
+  try {
+    // Grab the whole table (incl. header)
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Borrower_Data!A:M'
+    });
+
+    const values = res.data.values || [];
+    if (values.length < 2) {
+      throw new Error('No borrower data found');
+    }
+
+    const headers = values[0];
+
+    // Build rows with their actual sheet row numbers (header is row 1)
+    const rows = values.slice(1).map((row, i) => ({
+      rowNumber: i + 2, // sheet is 1-based + header offset
+      row
+    }));
+
+    // 1) Try to match by Unique ID (Column A)
+    let candidates = rows.filter(r => r.row[0] === borrowerId);
+
+    // 2) If not found, try to match by Borrower Name/Last Name (exact match)
+    if (candidates.length === 0) {
+      const nameColIndex = headers.findIndex(h =>
+        /borrower.*(name|last)/i.test(h)
+      );
+
+      if (nameColIndex !== -1) {
+        candidates = rows.filter(r => (r.row[nameColIndex] || '') === borrowerId);
+      }
+    }
+
+    if (candidates.length === 0) {
+      throw new Error(`No row found for "${borrowerId}". Pass the Unique ID to avoid ambiguity.`);
+    }
+    if (candidates.length > 1) {
+      // Prevent deleting the wrong row if name duplicates exist
+      const dupRows = candidates.map(c => c.rowNumber).join(', ');
+      throw new Error(
+        `Multiple rows matched "${borrowerId}" (rows: ${dupRows}). Use the Unique ID from column A.`
+      );
+    }
+
+    const targetRow = candidates[0].rowNumber;
+    console.log('📍 Deleting row:', targetRow);
+
+    // Find the sheetId for the "Borrower_Data" sheet
+    const spreadsheetMeta = await sheets.spreadsheets.get({ spreadsheetId });
+    const borrowerSheet = (spreadsheetMeta.data.sheets || []).find(
+      s => s.properties && s.properties.title === 'Borrower_Data'
+    );
+    if (!borrowerSheet) {
+      throw new Error('Sheet "Borrower_Data" not found');
+    }
+    const sheetId = borrowerSheet.properties.sheetId;
+
+    // Delete the row via batchUpdate → deleteDimension uses zero-based indices
+    const startIndex = targetRow - 1;
+    const endIndex = targetRow;
+
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      resource: {
+        requests: [
+          {
+            deleteDimension: {
+              range: {
+                sheetId,
+                dimension: 'ROWS',
+                startIndex,
+                endIndex
+              }
+            }
+          }
+        ]
+      }
+    });
+
+    console.log('✅ Borrower row deleted successfully', targetRow);
+    return {
+      success: true,
+      message: `Borrower row ${targetRow} deleted successfully`
+    };
+
+  } catch (error) {
+    console.error('💥 Error in deleteBorrowerData:', error);
+    throw new Error(`Failed to delete borrower data: ${error.message}`);
   }
 }
 

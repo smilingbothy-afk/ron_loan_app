@@ -130,6 +130,90 @@ code {
   margin-bottom: 20px;
 }
 
+/* Button Variants */
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 14px;
+  margin: 0 4px;
+}
+
+.btn-secondary {
+  background: #6c757d;
+  color: white;
+}
+
+.btn-secondary:hover {
+  background: #5a6268;
+}
+
+.btn-danger {
+  background: #dc3545;
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #c82333;
+}
+
+/* Form Actions */
+.form-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 24px;
+}
+
+/* Actions Column */
+.actions-column {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Table Improvements */
+.data-table table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+}
+
+.data-table th,
+.data-table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #e1e5e9;
+  vertical-align: middle;
+}
+
+.data-table th {
+  background-color: #f8f9fa;
+  font-weight: 600;
+  color: #333;
+  position: sticky;
+  top: 0;
+}
+
+.data-table tr:hover {
+  background-color: #f8f9fa;
+}
+
+/* Responsive table */
+@media (max-width: 768px) {
+  .data-table {
+    overflow-x: auto;
+  }
+  
+  .btn-sm {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+  
+  .form-actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+}
+
 /* Access Denied Component Styles */
 .access-denied-container {
   display: flex;
@@ -180,4 +264,69 @@ code {
 
 .access-denied-help strong {
   color: #333;
+}
+
+/* Icon Buttons */
+.icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  margin: 0 2px;
+  border-radius: 4px;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+}
+
+.icon-btn:hover {
+  transform: scale(1.05);
+}
+
+.edit-btn {
+  color: #007bff;
+  background-color: rgba(0, 123, 255, 0.1);
+}
+
+.edit-btn:hover {
+  background-color: rgba(0, 123, 255, 0.2);
+}
+
+.delete-btn {
+  color: #dc3545;
+  background-color: rgba(220, 53, 69, 0.1);
+}
+
+.delete-btn:hover {
+  background-color: rgba(220, 53, 69, 0.2);
+}
+
+.icon-btn:active {
+  transform: scale(0.95);
+}
+
+/* Actions column styling */
+.actions-column {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Responsive icon buttons */
+@media (max-width: 768px) {
+  .icon-btn {
+    padding: 4px;
+    min-width: 24px;
+    height: 24px;
+    font-size: 12px;
+  }
+  
+  .actions-column {
+    gap: 2px;
+  }
 }
